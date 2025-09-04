@@ -1,12 +1,11 @@
-// ========================= src/view/ChessGUI.java =========================
 package view;
 
+import controller.AIController;
 import controller.Game;
 import java.awt.*;
 import java.awt.event.*;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.border.MatteBorder;
@@ -15,486 +14,414 @@ import model.pieces.Pawn;
 import model.pieces.Piece;
 
 public class ChessGUI extends JFrame {
-    private static final long serialVersionUID = 1L; // evita warning de serialização
+    private static final long serialVersionUID = 1L;
 
-    // --- Config de cores/styles ---
-    private static final Color LIGHT_SQ = new Color(240, 217, 181);
-    private static final Color DARK_SQ  = new Color(181, 136, 99);
-    private static final Color HILITE_SELECTED = new Color(50, 120, 220);
-    private static final Color HILITE_LEGAL    = new Color(20, 140, 60);
-    private static final Color HILITE_LASTMOVE = new Color(220, 170, 30);
+    // --- NOVO ESTILO: Cores Mais Elegantes ---
+    private static final Color COR_CASA_CLARA = new Color(135,206,235); // Branco
+    private static final Color COR_CASA_ESCURA = new Color(240,248,255);  // Azul
+    
+    private static final Color COR_DESTAQUE_SELECIONADO = new Color(28,28,28); // Cinza Escuro
+    private static final Color COR_DESTAQUE_LEGAL = new Color(79, 79, 79);     // Verde Suave
+    private static final Color COR_DESTAQUE_ULTIMO = new Color(220, 200, 100, 130);    // Ouro Envelhecido
+    private static final Color COR_DESTAQUE_XEQUE = new Color(245, 39, 39);       // Vermelho Discreto
 
-    private static final Border BORDER_SELECTED = new MatteBorder(3,3,3,3, HILITE_SELECTED);
-    private static final Border BORDER_LEGAL    = new MatteBorder(3,3,3,3, HILITE_LEGAL);
-    private static final Border BORDER_LASTMOVE = new MatteBorder(3,3,3,3, HILITE_LASTMOVE);
+    private static final Border BORDA_SELECIONADO = new MatteBorder(3, 3, 3, 3, COR_DESTAQUE_SELECIONADO);
+    private static final Border BORDA_LEGAL = new MatteBorder(3, 3, 3, 3, COR_DESTAQUE_LEGAL);
 
     private final Game game;
+    private final AIController aiController;
 
     private final JPanel boardPanel;
     private final JButton[][] squares = new JButton[8][8];
-
-    private final JLabel status;
-    private final JTextArea history;
-    private final JScrollPane historyScroll;
-
-    // Menu / controles
-    private JCheckBoxMenuItem pcAsBlack;
+    private final JLabel statusLabel;
+    private final JTextArea historyArea;
+    private final JPanel capturedWhitePanel;
+    private final JPanel capturedBlackPanel;
     private JSpinner depthSpinner;
-    private JMenuItem newGameItem, quitItem;
 
-    // Seleção atual e movimentos legais
-    private Position selected = null;
-    private List<Position> legalForSelected = new ArrayList<>();
+    // --- Variáveis de Configuração do Jogo ---
+    private boolean playerIsWhite;
+    private boolean isPvpMode;
+    private boolean isBoardFlipped;
 
-    // Realce do último lance
+    private Position selectedPos = null;
+    private List<Position> legalMovesForSelected = new ArrayList<>();
     private Position lastFrom = null, lastTo = null;
-
-    // IA
     private boolean aiThinking = false;
-    private final Random rnd = new Random();
 
     public ChessGUI() {
-        super("ChessGame");
-
-        // Look&Feel Nimbus
+        super("Jogo de Xadrez");
         try {
             UIManager.setLookAndFeel("javax.swing.plaf.nimbus.NimbusLookAndFeel");
-            SwingUtilities.updateComponentTreeUI(this);
         } catch (Exception ignored) {}
 
         this.game = new Game();
+        this.aiController = new AIController();
+        
+        showGameSetupDialog();
 
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         setLayout(new BorderLayout(8, 8));
-
-        // Menu
         setJMenuBar(buildMenuBar());
 
-        // Painel do tabuleiro (8x8)
-        boardPanel = new JPanel(new GridLayout(8, 8, 0, 0));
-        boardPanel.setBackground(Color.DARK_GRAY);
-        boardPanel.setBorder(BorderFactory.createEmptyBorder(6,6,6,6));
+        boardPanel = new JPanel(new GridLayout(8, 8));
+        boardPanel.setPreferredSize(new Dimension(600, 600));
 
-        // Cria botões das casas
         for (int r = 0; r < 8; r++) {
             for (int c = 0; c < 8; c++) {
-                final int rr = r;
-                final int cc = c;
-                JButton b = new JButton();
-                b.setMargin(new Insets(0, 0, 0, 0));
-                b.setFocusPainted(false);
-                b.setOpaque(true);
-                b.setBorderPainted(true);
-                b.setContentAreaFilled(true);
-                b.setFont(b.getFont().deriveFont(Font.BOLD, 24f)); // fallback com Unicode
-                b.addActionListener(e -> handleClick(new Position(rr, cc)));
-                squares[r][c] = b;
-                boardPanel.add(b);
+                squares[r][c] = new JButton();
+                squares[r][c].setOpaque(true);
+                squares[r][c].setBorderPainted(true);
+                final int finalR = r;
+                final int finalC = c;
+                squares[r][c].addActionListener(e -> onSquareClick(new Position(finalR, finalC)));
+                boardPanel.add(squares[r][c]);
             }
         }
 
-        // Barra inferior de status
-        status = new JLabel("Vez: Brancas");
-        status.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+        JPanel mainPanel = new JPanel(new BorderLayout(10, 10));
+        mainPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        // Histórico
-        history = new JTextArea(14, 22);
-        history.setEditable(false);
-        history.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        historyScroll = new JScrollPane(history);
+        Dimension capturedPanelSize = new Dimension(600, 40);
+        capturedWhitePanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        capturedWhitePanel.setPreferredSize(capturedPanelSize);
+        capturedBlackPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        capturedBlackPanel.setPreferredSize(capturedPanelSize);
+        
+        mainPanel.add(capturedWhitePanel, BorderLayout.NORTH);
+        mainPanel.add(boardPanel, BorderLayout.CENTER);
+        mainPanel.add(capturedBlackPanel, BorderLayout.SOUTH);
 
-        // Layout principal: tabuleiro à esquerda, histórico à direita
+        statusLabel = new JLabel();
+        statusLabel.setFont(new Font("Georgia", Font.PLAIN, 16));
+        statusLabel.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+
+        historyArea = new JTextArea(15, 25);
+        historyArea.setEditable(false);
+        historyArea.setFont(new Font("Consolas", Font.PLAIN, 14));
+        JScrollPane historyScroll = new JScrollPane(historyArea);
+        
         JPanel rightPanel = new JPanel(new BorderLayout(6, 6));
-        rightPanel.setBorder(BorderFactory.createEmptyBorder(6,6,6,6));
-        JLabel histLabel = new JLabel("Histórico de lances:");
-        histLabel.setBorder(BorderFactory.createEmptyBorder(0,0,4,0));
-        rightPanel.add(histLabel, BorderLayout.NORTH);
+        rightPanel.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 10));
+        rightPanel.add(new JLabel("Histórico:"), BorderLayout.NORTH);
         rightPanel.add(historyScroll, BorderLayout.CENTER);
-        rightPanel.add(buildSideControls(), BorderLayout.SOUTH);
 
-        add(boardPanel, BorderLayout.CENTER);
-        add(status, BorderLayout.SOUTH);
+        add(mainPanel, BorderLayout.CENTER);
+        add(statusLabel, BorderLayout.SOUTH);
         add(rightPanel, BorderLayout.EAST);
 
-        // Atualiza ícones conforme a janela/painel muda de tamanho
-        boardPanel.addComponentListener(new ComponentAdapter() {
-            @Override
-            public void componentResized(ComponentEvent e) {
-                refresh(); // recarrega ícones ajustando o tamanho
-            }
-        });
-
-        setMinimumSize(new Dimension(920, 680));
+        pack();
+        setResizable(false);
         setLocationRelativeTo(null);
-
-        // Atalhos: Ctrl+N, Ctrl+Q
-        setupAccelerators();
-
         setVisible(true);
-        refresh();
-        maybeTriggerAI(); // caso o PC jogue primeiro
+        
+        refreshAll();
+        maybeTriggerAI();
     }
+    
+    private void showGameSetupDialog() {
+        JRadioButton whiteRadio = new JRadioButton("Brancas", true);
+        JRadioButton blackRadio = new JRadioButton("Pretas");
+        ButtonGroup colorGroup = new ButtonGroup();
+        colorGroup.add(whiteRadio);
+        colorGroup.add(blackRadio);
+        JPanel colorPanel = new JPanel();
+        colorPanel.setBorder(BorderFactory.createTitledBorder("Escolha sua cor:"));
+        colorPanel.add(whiteRadio);
+        colorPanel.add(blackRadio);
 
-    // ----------------- Menus e controles -----------------
+        JRadioButton vsAiRadio = new JRadioButton("Contra IA", true);
+        JRadioButton vsHumanRadio = new JRadioButton("Humano vs. Humano");
+        ButtonGroup modeGroup = new ButtonGroup();
+        modeGroup.add(vsAiRadio);
+        modeGroup.add(vsHumanRadio);
+        JPanel modePanel = new JPanel();
+        modePanel.setBorder(BorderFactory.createTitledBorder("Modo de jogo:"));
+        modePanel.add(vsAiRadio);
+        modePanel.add(vsHumanRadio);
+
+        JPanel panel = new JPanel(new GridLayout(2, 1));
+        panel.add(colorPanel);
+        panel.add(modePanel);
+
+        int result = JOptionPane.showConfirmDialog(null, panel, "Configurar Novo Jogo",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+
+        if (result == JOptionPane.OK_OPTION) {
+            this.playerIsWhite = whiteRadio.isSelected();
+            this.isPvpMode = vsHumanRadio.isSelected();
+        } else {
+            System.exit(0);
+        }
+
+        this.isBoardFlipped = !this.playerIsWhite;
+    }
 
     private JMenuBar buildMenuBar() {
         JMenuBar mb = new JMenuBar();
-
         JMenu gameMenu = new JMenu("Jogo");
 
-        newGameItem = new JMenuItem("Novo Jogo");
-        newGameItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
+        JMenuItem newGameItem = new JMenuItem("Novo Jogo");
         newGameItem.addActionListener(e -> doNewGame());
-
-        pcAsBlack = new JCheckBoxMenuItem("PC joga com as Pretas");
-        pcAsBlack.setSelected(false);
-
-        JMenu depthMenu = new JMenu("Profundidade IA");
-        depthSpinner = new JSpinner(new SpinnerNumberModel(1, 1, 4, 1));
-        depthSpinner.setToolTipText("Profundidade efetiva da IA (heurística não-minimax)");
-        depthMenu.add(depthSpinner);
-
-        quitItem = new JMenuItem("Sair");
-        quitItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Q, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
-        quitItem.addActionListener(e -> dispatchEvent(new WindowEvent(this, WindowEvent.WINDOW_CLOSING)));
-
+        
+        depthSpinner = new JSpinner(new SpinnerNumberModel(2, 1, 5, 1));
+        
         gameMenu.add(newGameItem);
         gameMenu.addSeparator();
-        gameMenu.add(pcAsBlack);
-        gameMenu.add(depthMenu);
-        gameMenu.addSeparator();
-        gameMenu.add(quitItem);
-
+        gameMenu.add(new JLabel("Profundidade IA: "));
+        gameMenu.add(depthSpinner);
+        
         mb.add(gameMenu);
         return mb;
     }
 
-    private JPanel buildSideControls() {
-        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-        JButton btnNew = new JButton("Novo Jogo");
-        btnNew.addActionListener(e -> doNewGame());
-        panel.add(btnNew);
-
-        JCheckBox cb = new JCheckBox("PC (Pretas)");
-        cb.setSelected(pcAsBlack.isSelected());
-        cb.addActionListener(e -> pcAsBlack.setSelected(cb.isSelected()));
-        panel.add(cb);
-
-        panel.add(new JLabel("Prof. IA:"));
-        // >>> Fix da ambiguidade: força o construtor (int,int,int,int)
-        int curDepth = ((Integer) depthSpinner.getValue()).intValue();
-        JSpinner sp = new JSpinner(new SpinnerNumberModel(curDepth, 1, 4, 1));
-        sp.addChangeListener(e -> depthSpinner.setValue(sp.getValue()));
-        panel.add(sp);
-
-        return panel;
-    }
-
-    private void setupAccelerators() {
-        getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
-                .put(KeyStroke.getKeyStroke(KeyEvent.VK_N, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()), "newGame");
-        getRootPane().getActionMap().put("newGame", new AbstractAction() {
-            @Override public void actionPerformed(ActionEvent e) { doNewGame(); }
-        });
-
-        getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
-                .put(KeyStroke.getKeyStroke(KeyEvent.VK_Q, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()), "quit");
-        getRootPane().getActionMap().put("quit", new AbstractAction() {
-            @Override public void actionPerformed(ActionEvent e) {
-                dispatchEvent(new WindowEvent(ChessGUI.this, WindowEvent.WINDOW_CLOSING));
-            }
-        });
-    }
-
     private void doNewGame() {
-        selected = null;
-        legalForSelected.clear();
+        showGameSetupDialog();
+        
+        game.newGame();
+        selectedPos = null;
+        legalMovesForSelected.clear();
         lastFrom = lastTo = null;
         aiThinking = false;
-        game.newGame();
-        refresh();
+        refreshAll();
         maybeTriggerAI();
     }
 
-    // ----------------- Interação de tabuleiro -----------------
-
-    private void handleClick(Position clicked) {
+    private void onSquareClick(Position guiPos) {
         if (game.isGameOver() || aiThinking) return;
 
-        // Se for vez do PC (pretas) e modo PC ativado, ignore cliques
-        if (pcAsBlack.isSelected() && !game.whiteToMove()) return;
+        Position modelPos = isBoardFlipped ? new Position(7 - guiPos.getRow(), 7 - guiPos.getColumn()) : guiPos;
 
-        Piece p = game.board().get(clicked);
+        if (!isPvpMode) {
+            if (game.whiteToMove() != playerIsWhite) return;
+        }
 
-        if (selected == null) {
-            // Nada selecionado ainda: só seleciona se for peça da vez
-            if (p != null && p.isWhite() == game.whiteToMove()) {
-                selected = clicked;
-                legalForSelected = game.legalMovesFrom(selected);
+        Piece clickedPiece = game.board().get(modelPos);
+
+        if (selectedPos == null) {
+            if (clickedPiece != null && clickedPiece.isWhite() == game.whiteToMove()) {
+                selectedPos = modelPos;
+                legalMovesForSelected = game.legalMovesFrom(selectedPos);
             }
         } else {
-            // Já havia uma seleção
-            List<Position> legals = game.legalMovesFrom(selected); // recalc por segurança
-            if (legals.contains(clicked)) {
+            if (legalMovesForSelected.contains(modelPos)) {
                 Character promo = null;
-                Piece moving = game.board().get(selected);
-                if (moving instanceof Pawn && game.isPromotion(selected, clicked)) {
+                if (game.board().get(selectedPos) instanceof Pawn && game.isPromotion(selectedPos, modelPos)) {
                     promo = askPromotion();
                 }
-                lastFrom = selected;
-                lastTo   = clicked;
 
-                game.move(selected, clicked, promo);
+                boolean wasCapture = game.board().get(modelPos) != null;
+                boolean isValidMove = game.move(selectedPos, modelPos, promo);
+                
+                if (isValidMove) {
+                    lastFrom = selectedPos;
+                    lastTo = modelPos;
+                    playSoundForMove(wasCapture, game.inCheck(game.whiteToMove()));
+                }
 
-                selected = null;
-                legalForSelected.clear();
-
-                refresh();
+                selectedPos = null;
+                legalMovesForSelected.clear();
+                
+                refreshAll();
                 maybeAnnounceEnd();
                 maybeTriggerAI();
-                return;
-            } else if (p != null && p.isWhite() == game.whiteToMove()) {
-                // Troca a seleção para outra peça da vez
-                selected = clicked;
-                legalForSelected = game.legalMovesFrom(selected);
+                
+            } else if (clickedPiece != null && clickedPiece.isWhite() == game.whiteToMove()) {
+                selectedPos = modelPos;
+                legalMovesForSelected = game.legalMovesFrom(selectedPos);
             } else {
-                // Clique inválido: limpa seleção
-                selected = null;
-                legalForSelected.clear();
+                selectedPos = null;
+                legalMovesForSelected.clear();
             }
         }
-        refresh();
+        refreshBoard();
     }
 
     private Character askPromotion() {
         String[] opts = {"Rainha", "Torre", "Bispo", "Cavalo"};
-        int ch = JOptionPane.showOptionDialog(
-                this,
-                "Escolha a peça para promoção:",
-                "Promoção",
-                JOptionPane.DEFAULT_OPTION,
-                JOptionPane.QUESTION_MESSAGE,
-                null,
-                opts,
-                opts[0]
-        );
-        return switch (ch) {
-            case 1 -> 'R';
-            case 2 -> 'B';
-            case 3 -> 'N';
-            default -> 'Q';
-        };
+        int choice = JOptionPane.showOptionDialog(this, "Promover peão para:", "Promoção",
+                JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, opts, opts[0]);
+        return switch (choice) { case 1 -> 'R'; case 2 -> 'B'; case 3 -> 'N'; default -> 'Q'; };
     }
-
-    // ----------------- IA (não bloqueante) -----------------
 
     private void maybeTriggerAI() {
-        if (game.isGameOver()) return;
-        if (!pcAsBlack.isSelected()) return;
-        if (game.whiteToMove()) return; // PC joga de pretas
+        if (game.isGameOver() || isPvpMode) return;
+        
+        boolean isAiTurn = game.whiteToMove() != playerIsWhite;
 
-        aiThinking = true;
-        status.setText("Vez: Pretas — PC pensando...");
-        final int depth = (Integer) depthSpinner.getValue();
-
-        new SwingWorker<Void, Void>() {
-            Position aiFrom, aiTo;
-            @Override
-            protected Void doInBackground() {
-                // Heurística simples: escolher melhor captura disponível; senão, um lance aleatório "ok".
-                var allMoves = collectAllLegalMovesForSide(false); // pretas
-                if (allMoves.isEmpty()) return null;
-
-                int bestScore = Integer.MIN_VALUE;
-                List<Move> bestList = new ArrayList<>();
-
-                for (Move mv : allMoves) {
-                    int score = 0;
-
-                    Piece target = game.board().get(mv.to);
-                    if (target != null) {
-                        score += pieceValue(target); // capturas valem
+        if (isAiTurn) {
+            aiThinking = true;
+            String aiColor = playerIsWhite ? "Pretas" : "Brancas";
+            statusLabel.setText("Vez das " + aiColor + " — PC pensando...");
+            
+            Timer timer = new Timer(500, (e) -> {
+                int depth = (Integer) depthSpinner.getValue();
+                aiController.findBestMove(game, depth, (bestMove) -> {
+                    if (bestMove != null) {
+                        boolean wasCapture = game.board().get(bestMove.to) != null;
+                        game.move(bestMove.from, bestMove.to, 'Q');
+                        lastFrom = bestMove.from;
+                        lastTo = bestMove.to;
+                        playSoundForMove(wasCapture, game.inCheck(game.whiteToMove()));
                     }
-                    score += centerBonus(mv.to);
-                    score += (depth - 1) * 2;
-
-                    if (score > bestScore) {
-                        bestScore = score;
-                        bestList.clear();
-                        bestList.add(mv);
-                    } else if (score == bestScore) {
-                        bestList.add(mv);
-                    }
-                }
-                Move chosen = bestList.get(rnd.nextInt(bestList.size()));
-                aiFrom = chosen.from;
-                aiTo   = chosen.to;
-                return null;
-            }
-
-            @Override
-            protected void done() {
-                try { get(); } catch (Exception ignored) {}
-
-                if (aiFrom != null && aiTo != null && !game.isGameOver() && !game.whiteToMove()) {
-                    lastFrom = aiFrom;
-                    lastTo   = aiTo;
-                    Character promo = null;
-                    Piece moving = game.board().get(aiFrom);
-                    if (moving instanceof Pawn && game.isPromotion(aiFrom, aiTo)) {
-                        promo = 'Q';
-                    }
-                    game.move(aiFrom, aiTo, promo);
-                }
-                aiThinking = false;
-                refresh();
-                maybeAnnounceEnd();
-            }
-        }.execute();
+                    aiThinking = false;
+                    refreshAll();
+                    maybeAnnounceEnd();
+                });
+            });
+            timer.setRepeats(false);
+            timer.start();
+        }
+    }
+    
+    private void playSoundForMove(boolean isCapture, boolean isCheck) {
+        if (isCheck) SoundUtil.playSound("check.wav");
+        else if (isCapture) SoundUtil.playSound("captura.wav");
+        else SoundUtil.playSound("move.wav");
     }
 
-    private static class Move {
-        final Position from, to;
-        Move(Position f, Position t) { this.from = f; this.to = t; }
+    private void refreshAll() {
+        refreshBoard();
+        refreshHistory();
+        refreshStatus();
+        refreshCapturedPieces();
     }
-
-    private List<Move> collectAllLegalMovesForSide(boolean whiteSide) {
-        List<Move> moves = new ArrayList<>();
-        if (whiteSide != game.whiteToMove()) return moves;
+    
+    private void refreshBoard() {
+        Position kingInCheck = game.inCheck(game.whiteToMove()) ? game.findKing(game.whiteToMove()) : null;
+        int iconSize = Math.max(24, boardPanel.getWidth() / 10);
 
         for (int r = 0; r < 8; r++) {
             for (int c = 0; c < 8; c++) {
-                Position from = new Position(r, c);
-                Piece piece = game.board().get(from);
-                if (piece != null && piece.isWhite() == whiteSide) {
-                    for (Position to : game.legalMovesFrom(from)) {
-                        moves.add(new Move(from, to));
-                    }
-                }
-            }
-        }
-        return moves;
-    }
-
-    private int pieceValue(Piece p) {
-        if (p == null) return 0;
-        switch (p.getSymbol()) {
-            case "P": return 100;
-            case "N":
-            case "B": return 300;
-            case "R": return 500;
-            case "Q": return 900;
-            case "K": return 20000;
-        }
-        return 0;
-    }
-
-    private int centerBonus(Position pos) {
-        int r = pos.getRow(), c = pos.getColumn();
-        if ((r==3 || r==4) && (c==3 || c==4)) return 10;
-        if ((r>=2 && r<=5) && (c>=2 && c<=5)) return 4;
-        return 0;
-    }
-
-    // ----------------- Atualização de UI -----------------
-
-    private void refresh() {
-        // 1) Cores base e limpa bordas
-        for (int r = 0; r < 8; r++) {
-            for (int c = 0; c < 8; c++) {
-                boolean light = (r + c) % 2 == 0;
-                Color base = light ? LIGHT_SQ : DARK_SQ;
                 JButton b = squares[r][c];
-                b.setBackground(base);
+                b.setBackground((r + c) % 2 == 0 ? COR_CASA_CLARA : COR_CASA_ESCURA);
                 b.setBorder(null);
-                b.setToolTipText(null);
-            }
-        }
 
-        // 2) Realce último lance
-        if (lastFrom != null) squares[lastFrom.getRow()][lastFrom.getColumn()].setBorder(BORDER_LASTMOVE);
-        if (lastTo   != null) squares[lastTo.getRow()][lastTo.getColumn()].setBorder(BORDER_LASTMOVE);
-
-        // 3) Realce seleção e movimentos legais
-        if (selected != null) {
-            squares[selected.getRow()][selected.getColumn()].setBorder(BORDER_SELECTED);
-            for (Position d : legalForSelected) {
-                squares[d.getRow()][d.getColumn()].setBorder(BORDER_LEGAL);
-            }
-        }
-
-        // 4) Ícones das peças (ou Unicode como fallback)
-        int iconSize = computeSquareIconSize();
-        for (int r = 0; r < 8; r++) {
-            for (int c = 0; c < 8; c++) {
-                Piece p = game.board().get(new Position(r, c));
-                JButton b = squares[r][c];
-
-                if (p == null) {
-                    b.setIcon(null);
-                    b.setText("");
-                    continue;
+                Position modelPos = isBoardFlipped ? new Position(7 - r, 7 - c) : new Position(r, c);
+                
+                if (modelPos.equals(kingInCheck)) {
+                    b.setBackground(COR_DESTAQUE_XEQUE);
+                } else if (modelPos.equals(lastFrom) || modelPos.equals(lastTo)) {
+                    b.setBackground(blend(b.getBackground(), COR_DESTAQUE_ULTIMO));
                 }
 
-                char sym = p.getSymbol().charAt(0);
-                ImageIcon icon = ImageUtil.getPieceIcon(p.isWhite(), sym, iconSize);
-                if (icon != null) {
-                    b.setIcon(icon);
-                    b.setText("");
-                } else {
-                    b.setIcon(null);
-                    b.setText(toUnicode(p.getSymbol(), p.isWhite()));
+                if (modelPos.equals(selectedPos)) {
+                    b.setBorder(BORDA_SELECIONADO);
+                } else if (legalMovesForSelected.contains(modelPos)) {
+                    b.setBorder(BORDA_LEGAL);
                 }
+                
+                Piece p = game.board().get(modelPos);
+                b.setIcon(p != null ? ImageUtil.getPieceIcon(p.isWhite(), p.getSymbol(), iconSize) : null);
             }
         }
-
-        // 5) Status e histórico
+    }
+    
+    private void refreshStatus() {
         String side = game.whiteToMove() ? "Brancas" : "Pretas";
-        String chk = game.inCheck(game.whiteToMove()) ? " — Xeque!" : "";
-        if (aiThinking) chk = " — PC pensando...";
-        status.setText("Vez: " + side + chk);
-
-        StringBuilder sb = new StringBuilder();
-        var hist = game.history();
-        for (int i = 0; i < hist.size(); i++) {
-            if (i % 2 == 0) sb.append((i / 2) + 1).append('.').append(' ');
-            sb.append(hist.get(i)).append(' ');
-            if (i % 2 == 1) sb.append('\n');
+        String checkStatus = game.inCheck(game.whiteToMove()) ? " — Xeque!" : "";
+        if (aiThinking) {
+            String aiColor = playerIsWhite ? "Pretas" : "Brancas";
+            statusLabel.setText("Vez das " + aiColor + " — PC pensando...");
+        } else {
+            statusLabel.setText("Vez das " + side + checkStatus);
         }
-        history.setText(sb.toString());
-        history.setCaretPosition(history.getDocument().getLength());
+    }
+    
+    private void refreshHistory() {
+        StringBuilder sb = new StringBuilder();
+        List<String> hist = game.history();
+        for (int i = 0; i < hist.size(); i++) {
+            if (i % 2 == 0) sb.append((i / 2) + 1).append(". ");
+            sb.append(hist.get(i)).append("  ");
+            if (i % 2 == 1) sb.append("\n");
+        }
+        historyArea.setText(sb.toString());
+        historyArea.setCaretPosition(historyArea.getDocument().getLength());
+    }
+    
+    private void refreshCapturedPieces() {
+        capturedWhitePanel.removeAll();
+        capturedBlackPanel.removeAll();
+        
+        List<Piece> allWhite = game.board().getPieces(true);
+        List<Piece> allBlack = game.board().getPieces(false);
+
+        int capturedBlackValue = calculateTotalMaterial() - getMaterialValue(allBlack);
+        if (capturedBlackValue > 0) {
+            capturedWhitePanel.add(new JLabel("Capturadas pelas Brancas: "));
+            addCapturedIcons(capturedWhitePanel, false, allBlack); // Icons for white side (pieces captured FROM black)
+        }
+
+        int capturedWhiteValue = calculateTotalMaterial() - getMaterialValue(allWhite);
+        if (capturedWhiteValue > 0) {
+            capturedBlackPanel.add(new JLabel("Capturadas pelas Pretas: "));
+            addCapturedIcons(capturedBlackPanel, true, allWhite); // Icons for black side (pieces captured FROM white)
+        }
+
+        capturedWhitePanel.revalidate();
+        capturedWhitePanel.repaint();
+        capturedBlackPanel.revalidate();
+        capturedBlackPanel.repaint();
+    }
+    
+    // Helper para adicionar os ícones de peças capturadas
+    private void addCapturedIcons(JPanel panel, boolean capturedAreWhite, List<Piece> remainingPieces) {
+        // Obter os símbolos das peças que *ainda restam* no tabuleiro
+        List<String> remainingSymbols = new ArrayList<>();
+        for (Piece p : remainingPieces) {
+            remainingSymbols.add(p.getSymbol());
+        }
+
+        String[] allPieceSymbols = {"P", "N", "B", "R", "Q"}; // Peões, Cavalos, Bispos, Torres, Rainhas
+        int[] initialCounts = {8, 2, 2, 2, 1}; // Contagem inicial de cada peça
+
+        for (int i = 0; i < allPieceSymbols.length; i++) {
+            String symbol = allPieceSymbols[i];
+            int initialCount = initialCounts[i];
+            
+            // Contar quantos desse tipo restam
+            long countRemaining = remainingSymbols.stream().filter(s -> s.equals(symbol)).count();
+            
+            // O número de peças capturadas é o inicial menos o que restou
+            int countCaptured = initialCount - (int)countRemaining;
+            
+            for (int j = 0; j < countCaptured; j++) {
+                ImageIcon icon = ImageUtil.getPieceIcon(capturedAreWhite, symbol.charAt(0), 20); // Usar a cor correta da peça capturada
+                if (icon != null) panel.add(new JLabel(icon));
+            }
+        }
+    }
+    
+    private int getMaterialValue(List<Piece> pieces) {
+        int value = 0;
+        for (Piece p : pieces) {
+            value += switch (p.getSymbol()) {
+                case "P" -> 1; case "N", "B" -> 3;
+                case "R" -> 5; case "Q" -> 9;
+                default -> 0; // Reis não contribuem para o valor material
+            };
+        }
+        return value;
+    }
+
+    private int calculateTotalMaterial() {
+        return 1*8 + 3*2 + 3*2 + 5*2 + 9; // Valor inicial total de material (sem reis)
     }
 
     private void maybeAnnounceEnd() {
         if (!game.isGameOver()) return;
-        String msg;
-        if (game.inCheck(game.whiteToMove())) {
-            msg = "Xeque-mate! " + (game.whiteToMove() ? "Brancas" : "Pretas") + " estão em mate.";
-        } else {
-            msg = "Empate por afogamento (stalemate).";
-        }
-        JOptionPane.showMessageDialog(this, msg, "Fim de Jogo", JOptionPane.INFORMATION_MESSAGE);
+        SoundUtil.playSound("fim.wav");
+        SwingUtilities.invokeLater(() -> 
+            JOptionPane.showMessageDialog(this, game.getGameEndMessage(), "Fim de Jogo", JOptionPane.INFORMATION_MESSAGE)
+        );
     }
 
-    private String toUnicode(String sym, boolean white) {
-        return switch (sym) {
-            case "K" -> white ? "\u2654" : "\u265A";
-            case "Q" -> white ? "\u2655" : "\u265B";
-            case "R" -> white ? "\u2656" : "\u265C";
-            case "B" -> white ? "\u2657" : "\u265D";
-            case "N" -> white ? "\u2658" : "\u265E";
-            case "P" -> white ? "\u2659" : "\u265F";
-            default -> "";
-        };
-    }
-
-    private int computeSquareIconSize() {
-        JButton b = squares[0][0];
-        int w = Math.max(1, b.getWidth());
-        int h = Math.max(1, b.getHeight());
-        int side = Math.min(w, h);
-        if (side <= 1) return 64;
-        return Math.max(24, side - 8);
+    private static Color blend(Color c1, Color c2) {
+        float r = (c1.getRed() * 0.5f) + (c2.getRed() * 0.5f);
+        float g = (c1.getGreen() * 0.5f) + (c2.getGreen() * 0.5f);
+        float b = (c1.getBlue() * 0.5f) + (c2.getBlue() * 0.5f);
+        return new Color((int) r, (int) g, (int) b);
     }
 
     public static void main(String[] args) {
