@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 import javax.swing.SwingWorker;
 import model.board.Board;
 import model.board.Position;
@@ -128,21 +129,25 @@ public class AIController {
         double r = Math.random(); // Fator de aleatoriedade para a seleção.
 
         return switch (difficultyIndex) {
+            case 0 -> { // Burro: Joga um lance aleatório
+                int randomIndex = ThreadLocalRandom.current().nextInt(scoredMoves.size());
+                yield scoredMoves.get(randomIndex).move();
+            }
             // Fácil: 60% melhor lance, 30% 2º melhor, 10% 3º melhor.
-            case 0 -> {
+            case 1 -> {
                 if (scoredMoves.size() <= 2) yield scoredMoves.get(0).move();
                 if (r < 0.60) yield scoredMoves.get(0).move();
                 if (r < 0.90) yield scoredMoves.get(1).move();
                 yield scoredMoves.get(2).move();
             }
             // Médio: 85% melhor lance, 15% 2º melhor.
-            case 1 -> {
+            case 2 -> {
                 if (scoredMoves.size() == 1) yield scoredMoves.get(0).move();
                 if (r < 0.85) yield scoredMoves.get(0).move();
                 yield scoredMoves.get(1).move();
             }
             // Difícil: 95% melhor lance, 5% 2º melhor.
-            case 2 -> {
+            case 3 -> {
                 if (scoredMoves.size() == 1) yield scoredMoves.get(0).move();
                 if (r < 0.95) yield scoredMoves.get(0).move();
                 yield scoredMoves.get(1).move();

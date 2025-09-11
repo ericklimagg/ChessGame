@@ -180,9 +180,9 @@ public class ChessGUI extends JFrame {
         aiLabel.setForeground(TEXT_COLOR);
         aiPanel.add(aiLabel, BorderLayout.WEST);
         
-        String[] difficulties = {"Fácil", "Médio", "Difícil", "Expert"};
+        String[] difficulties = {"Burro", "Fácil", "Médio", "Difícil", "Expert"};
         difficultySelector = new JComboBox<>(difficulties);
-        difficultySelector.setSelectedIndex(1); 
+        difficultySelector.setSelectedIndex(2); 
         difficultySelector.setBackground(COMBO_BG_COLOR);
         difficultySelector.setForeground(TEXT_COLOR);
         aiPanel.add(difficultySelector, BorderLayout.CENTER);
@@ -419,10 +419,11 @@ public class ChessGUI extends JFrame {
             // Define o tempo de busca da IA com base na dificuldade selecionada.
             int difficultyIndex = difficultySelector.getSelectedIndex();
             long timeLimit = switch (difficultyIndex) {
-                case 0 -> 1000L; // Fácil: 1 segundo
-                case 1 -> 3000L; // Médio: 3 segundos
-                case 2 -> 5000L; // Difícil: 5 segundos
-                case 3 -> 7000L; // Expert: 7 segundos
+                case 0 -> 100L;  // Burro: 0.1 segundo
+                case 1 -> 1000L; // Fácil: 1 segundo
+                case 2 -> 3000L; // Médio: 3 segundos
+                case 3 -> 5000L; // Difícil: 5 segundos
+                case 4 -> 7000L; // Expert: 7 segundos
                 default -> 3000L;
             };
 

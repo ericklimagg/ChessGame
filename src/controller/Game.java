@@ -192,11 +192,15 @@ public final class Game {
         if (piece instanceof King && Math.abs(to.getColumn() - from.getColumn()) == 2) {
             board.move(from, to);
             int row = from.getRow();
+            Piece rook;
             if (to.getColumn() == 6) { // Roque do lado do rei
+                rook = board.get(new Position(row, 7));
                 board.move(new Position(row, 7), new Position(row, 5)); 
             } else { // Roque do lado da rainha
+                rook = board.get(new Position(row, 0));
                 board.move(new Position(row, 0), new Position(row, 3)); 
             }
+            if(rook != null) rook.setMoved(true);
         }
         // Lógica do En Passant.
         else if (piece instanceof Pawn && to.equals(enPassantTarget) && board.get(to) == null) {
@@ -228,10 +232,10 @@ public final class Game {
             enPassantTarget = null;
         }
 
-        // Marca que o rei ou a torre se moveram (importante para a lógica do roque).
-        if (piece instanceof King || piece instanceof Rook) {
-            piece.setMoved(true);
-        }
+        // >>>>> CORREÇÃO AQUI <<<<<
+        // Marca que a peça se moveu. Isso é importante para o roque,
+        // avanço duplo do peão e qualquer outra regra futura.
+        piece.setMoved(true);
     }
 
     /**
